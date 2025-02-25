@@ -243,28 +243,7 @@ int main(int argc, char ** argv) {
         // process new audio
 
         if (!use_vad) {
-            while (true) {
-                // handle Ctrl + C
-                is_running = sdl_poll_events();
-                if (!is_running) {
-                    break;
-                }
-                audio.get(params.step_ms, pcmf32_new);
-
-                if ((int) pcmf32_new.size() > 2*n_samples_step) {
-                    fprintf(stderr, "\n\n%s: WARNING: cannot process audio fast enough, dropping audio ...\n\n", __func__);
-                    audio.clear();
-                    continue;
-                }
-
-                if ((int) pcmf32_new.size() >= n_samples_step) {
-                    audio.clear();
-                    break;
-                }
-
-                std::this_thread::sleep_for(std::chrono::milliseconds(1));
-            }
-
+            audio.get_until_length_enough(params.step_ms, pcmf32_new, false);
             const int n_samples_new = pcmf32_new.size();
 
             // take up to params.length_ms audio from previous iteration
@@ -281,26 +260,16 @@ int main(int argc, char ** argv) {
             memcpy(pcmf32.data() + n_samples_take, pcmf32_new.data(), n_samples_new*sizeof(float));
 
             pcmf32_old = pcmf32;
-        } else {
-            const auto t_now  = std::chrono::high_resolution_clock::now();
-            const auto t_diff = std::chrono::duration_cast<std::chrono::milliseconds>(t_now - t_last).count();
-
-            if (t_diff < 2000) {
-                std::this_thread::sleep_for(std::chrono::milliseconds(100));
-
-                continue;
-            }
-
-            audio.get(2000, pcmf32_new);
-
-            if (::vad_simple(pcmf32_new, WHISPER_SAMPLE_RATE, 1000, params.vad_thold, params.freq_thold, false)) {
-                audio.get(params.length_ms, pcmf32);
+        }
+        else
+        {
+            const auto t_now = std::chrono::high_resolution_clock::now();
+            audio.get_until_length_enough(2000, pcmf32, false);
+            if (::vad_simple(pcmf32, WHISPER_SAMPLE_RATE, 1000, params.vad_thold, params.freq_thold, false)) {
+                audio.get_until_length_enough(std::max(params.length_ms - 2000, 0), pcmf32, true);
             } else {
-                std::this_thread::sleep_for(std::chrono::milliseconds(100));
-
                 continue;
             }
-
             t_last = t_now;
         }
 

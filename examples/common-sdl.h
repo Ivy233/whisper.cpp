@@ -30,6 +30,7 @@ public:
 
     // get audio data from the circular buffer
     void get(int ms, std::vector<float> & audio);
+    void get_until_length_enough(int ms, std::vector<float> & audio, bool cont);
 
 private:
     SDL_AudioDeviceID m_dev_id_in = 0;

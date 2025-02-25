@@ -1,6 +1,6 @@
 #include "common-sdl.h"
 
-#include <cstdio>
+#include <thread>
 
 audio_async::audio_async(int len_ms) {
     m_len_ms = len_ms;
@@ -156,18 +156,14 @@ void audio_async::callback(uint8_t * stream, int len) {
 
         if (m_audio_pos + n_samples > m_audio.size()) {
             const size_t n0 = m_audio.size() - m_audio_pos;
-
             memcpy(&m_audio[m_audio_pos], stream, n0 * sizeof(float));
             memcpy(&m_audio[0], stream + n0 * sizeof(float), (n_samples - n0) * sizeof(float));
-
-            m_audio_pos = (m_audio_pos + n_samples) % m_audio.size();
-            m_audio_len = m_audio.size();
         } else {
             memcpy(&m_audio[m_audio_pos], stream, n_samples * sizeof(float));
-
             m_audio_pos = (m_audio_pos + n_samples) % m_audio.size();
-            m_audio_len = std::min(m_audio_len + n_samples, m_audio.size());
         }
+        m_audio_pos = (m_audio_pos + n_samples) % m_audio.size();
+        m_audio_len = std::min(m_audio_len + n_samples, m_audio.size());
     }
 }
 
@@ -212,6 +208,53 @@ void audio_async::get(int ms, std::vector<float> & result) {
             memcpy(result.data(), &m_audio[s0], n_samples * sizeof(float));
         }
     }
+}
+
+void audio_async::get_until_length_enough(int ms, std::vector<float>& result, bool cont) {
+    size_t n_samples = (m_sample_rate * ms) / 1000, got_samples = 0, last_result_pos = 0;
+    if (cont) {
+        last_result_pos = result.size();
+        result.resize(n_samples + result.size());
+    } else {
+        result.clear();
+        result.resize(n_samples);
+    }
+    fprintf(stderr, "%s: %zu samples, pos %zu, len %zu\n", __func__, n_samples, m_audio_pos, m_audio_len);
+    while (true) {
+        if (!m_dev_id_in) {
+            fprintf(stderr, "%s: no audio device to get audio from!\n", __func__);
+            break;
+        }
+
+        if (!m_running) {
+            fprintf(stderr, "%s: not running!\n", __func__);
+            break;
+        }
+        if (m_audio_len == m_audio.size()) {
+            fprinf(stderr, "%s: Buffer overflow! It still works but some audio can't be obtained!", __func__);
+            fprinf(stderr, "%s: If this prompt continues to appear, it is very likely that the model cannot recognize it in time.", __func__);
+        }
+
+        std::lock_guard<std::mutex> lock(m_mutex);
+        size_t got_samples_this_cycle = std::min(n_samples - got_samples, m_audio_len);
+        fprintf(stderr, "%s: %zu samples, pos %zu, len %zu, got_samples %zu, got_sampels_this_cycle %zu\n", __func__, n_samples, m_audio_pos, m_audio_len, got_samples, got_samples_this_cycle);
+        size_t s0 = m_audio_pos >= m_audio_len ? m_audio_pos - m_audio_len : m_audio_pos - m_audio_len + m_audio.size();
+        if (s0 + got_samples_this_cycle >= m_audio.size()) {
+            size_t t0 = s0 + got_samples_this_cycle - m_audio.size();
+            memcpy(result.data() + last_result_pos + got_samples, m_audio.data() + s0, (m_audio.size() - s0) * sizeof(float));
+            memcpy(result.data() + last_result_pos + got_samples + (m_audio.size() - s0), m_audio.data(), t0 * sizeof(float));
+        } else {
+            memcpy(result.data() + got_samples, m_audio.data() + s0, got_samples_this_cycle * sizeof(float));
+        }
+        lock.~lock_guard();
+        got_samples += got_samples_this_cycle;
+        m_audio_len -= got_samples_this_cycle;
+        if (got_samples >= n_samples)
+            break;
+        else
+            std::this_thread::sleep_for(std::chrono::milliseconds(std::min(m_audio.size() * 600 / m_sample_rate, 200UL)));
+    }
+    result.resize(got_samples + last_result_pos);
 }
 
 bool sdl_poll_events() {

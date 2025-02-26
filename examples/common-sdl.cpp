@@ -230,8 +230,8 @@ void audio_async::get_until_length_enough(int ms, std::vector<float>& result, bo
             break;
         }
         if (m_audio_len == m_audio.size()) {
-            fprintf(stderr, "%s: Buffer overflow! It still works but some audio can't be obtained!", __func__);
-            fprintf(stderr, "%s: If this prompt continues to appear, it is very likely that the model cannot recognize it in time.", __func__);
+            fprintf(stderr, "%s: Buffer overflow! It still works but some audio can't be obtained!\n", __func__);
+            fprintf(stderr, "%s: If this prompt continues to appear, it is very likely that the model cannot recognize it in time.\n", __func__);
         }
 
         std::lock_guard<std::mutex> lock(m_mutex);

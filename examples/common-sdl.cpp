@@ -233,9 +233,9 @@ void audio_async::get_until_length_enough(int ms, std::vector<float>& result, bo
             fprintf(stderr, "%s: If this prompt continues to appear, it is very likely that the model cannot recognize it in time.\n", __func__);
         }
 
+        size_t got_samples_this_cycle = std::min(n_samples - got_samples, m_audio_len);
         {
             std::lock_guard<std::mutex> lock(m_mutex);
-            size_t got_samples_this_cycle = std::min(n_samples - got_samples, m_audio_len);
             fprintf(stderr, "%s: %zu samples, pos %zu, len %zu, got_samples %zu, got_samples_this_cycle %zu\n", __func__, n_samples, m_audio_pos, m_audio_len, got_samples, got_samples_this_cycle);
             size_t s0 = m_audio_pos >= m_audio_len ? m_audio_pos - m_audio_len : m_audio_pos - m_audio_len + m_audio.size();
             if (s0 + got_samples_this_cycle >= m_audio.size()) {
